@@ -464,6 +464,25 @@ public:
 
 class CyclicOpSolver : public SequenceSolver {
     struct Op { char type; BigRat val; }; 
+
+    void generateCombinations(
+        size_t L, 
+        size_t currentStep, 
+        std::vector<Op>& currentOps, 
+        const std::vector<std::vector<Op>>& possibleOpsPerStep, 
+        std::vector<std::vector<Op>>& allCombinations
+    ) {
+        if (currentStep == L) {
+            allCombinations.push_back(currentOps);
+            return;
+        }
+
+        for (const auto& op : possibleOpsPerStep[currentStep]) {
+            currentOps[currentStep] = op;
+            generateCombinations(L, currentStep + 1, currentOps, possibleOpsPerStep, allCombinations);
+        }
+    }
+
 public:
     std::string getName() const override { return "Cyclic Operations"; }
     
@@ -471,99 +490,95 @@ public:
         size_t N = series.size();
         if (N < 4) return {};
 
+        std::vector<SolverResult> results;
+
         for (size_t L = 1; L < N; ++L) {
-            std::vector<Op> cycleOps(L);
-            bool cycleValid = true;
+            std::vector<std::vector<Op>> possibleOpsPerStep(L);
+            bool cyclePossible = true;
 
             for (size_t k = 0; k < L; ++k) {
-                if (k + 1 >= N) { cycleValid = false; break; }
+                if (k + 1 >= N) { cyclePossible = false; break; }
 
+                // 1. Check Addition
                 BigRat diff = series[k+1] - series[k];
-                BigRat div(0); 
-                bool divValid = (series[k] != 0);
-                if (divValid) div = series[k+1] / series[k];
-
                 bool isAdd = true;
                 for (size_t i = k; i < N - 1; i += L) {
                     if (series[i+1] != series[i] + diff) { isAdd = false; break; }
                 }
+                if (isAdd) possibleOpsPerStep[k].push_back({'a', diff});
 
+                // 2. Check Multiplication
                 bool isMult = true;
-                if (!divValid) isMult = false;
-                else {
+                BigRat div(0);
+                if (series[k] == 0) {
+                    isMult = false; 
+                } else {
+                    div = series[k+1] / series[k];
                     for (size_t i = k; i < N - 1; i += L) {
                         if (series[i] == 0 || series[i+1] != series[i] * div) { isMult = false; break; }
                     }
                 }
-                
-                if (isAdd && isMult) {
-                    bool diffIsInt = (diff.get_den() == 1);
-                    bool divIsInt = (div.get_den() == 1);
-                    if (diff == 0) cycleOps[k] = {'a', diff}; 
-                    else if (div == 1) cycleOps[k] = {'m', div};
-                    else if (diffIsInt && !divIsInt) cycleOps[k] = {'a', diff};
-                    else if (divIsInt && !diffIsInt) cycleOps[k] = {'m', div};
-                    else cycleOps[k] = {'m', div}; 
-                } else if (isAdd) {
-                    cycleOps[k] = {'a', diff};
-                } else if (isMult) {
-                    cycleOps[k] = {'m', div};
-                } else {
-                    bool isSq = true;
-                    for (size_t i = k; i < N - 1; i += L) {
-                        if (series[i+1] != series[i] * series[i]) { isSq = false; break; }
-                    }
-                    if (isSq) cycleOps[k] = {'p', 2};
-                    else { cycleValid = false; break; }
+                if (isMult) possibleOpsPerStep[k].push_back({'m', div});
+
+                // 3. Check Power (Square)
+                bool isSq = true;
+                for (size_t i = k; i < N - 1; i += L) {
+                    if (series[i+1] != series[i] * series[i]) { isSq = false; break; }
+                }
+                if (isSq) possibleOpsPerStep[k].push_back({'p', 2});
+
+                if (possibleOpsPerStep[k].empty()) {
+                    cyclePossible = false;
+                    break;
                 }
             }
 
-            if (cycleValid) {
+            if (cyclePossible) {
+                // Check if we have enough data to confirm cycle
                 bool confirmed = false;
                 if (L <= N/2) confirmed = true;
                 else if (N > L + 1) confirmed = true; 
 
                 if (confirmed) {
-                    size_t transIdx = N - 1;
-                    size_t opIdx = transIdx % L;
-                    Op op = cycleOps[opIdx];
-                    BigRat nextVal;
-                    
-                    if (op.type == 'a') nextVal = series.back() + op.val;
-                    else if (op.type == 'm') nextVal = series.back() * op.val;
-                    else if (op.type == 'p') nextVal = series.back() * series.back();
-                    
-                    // Build operation description with number transitions
-                    std::stringstream opDesc;
-                    opDesc << "Pattern: ";
-                    for (size_t i = 0; i < L && i < N - 1; ++i) {
-                        if (i > 0) opDesc << ", ";
-                        opDesc << toString(series[i]) << "→" << toString(series[i+1]);
-                        const Op& o = cycleOps[i];
-                        if (o.type == 'a') {
-                            if (o.val >= 0) opDesc << " (+" << toString(o.val) << ")";
-                            else opDesc << " (" << toString(o.val) << ")";
-                        } else if (o.type == 'm') {
-                            opDesc << " (×" << toString(o.val) << ")";
-                        } else if (o.type == 'p') {
-                            opDesc << " (^2)";
+                    std::vector<std::vector<Op>> allCombinations;
+                    std::vector<Op> currentOps(L);
+                    generateCombinations(L, 0, currentOps, possibleOpsPerStep, allCombinations);
+
+                    for (const auto& cycleOps : allCombinations) {
+                        size_t transIdx = N - 1;
+                        size_t opIdx = transIdx % L;
+                        Op op = cycleOps[opIdx];
+                        BigRat nextVal;
+                        
+                        if (op.type == 'a') nextVal = series.back() + op.val;
+                        else if (op.type == 'm') nextVal = series.back() * op.val;
+                        else if (op.type == 'p') nextVal = series.back() * series.back();
+                        
+                        std::stringstream opDesc;
+                        opDesc << "Pattern: ";
+                        for (size_t i = 0; i < L && i < N - 1; ++i) {
+                            if (i > 0) opDesc << ", ";
+                            opDesc << toString(series[i]) << "→" << toString(series[i+1]);
+                            const Op& o = cycleOps[i];
+                            if (o.type == 'a') {
+                                if (o.val >= 0) opDesc << " (+" << toString(o.val) << ")";
+                                else opDesc << " (" << toString(o.val) << ")";
+                            } else if (o.type == 'm') {
+                                opDesc << " (×" << toString(o.val) << ")";
+                            } else if (o.type == 'p') {
+                                opDesc << " (^2)";
+                            }
                         }
+                        opDesc << ", repeating every " << L << " steps";
+                        
+                        results.push_back({nextVal, "Cyclic Operations (Length " + std::to_string(L) + ")", "", 0.99, "", "", opDesc.str()});
                     }
-                    opDesc << ", repeating every " << L << " steps";
-                    std::string explanation = opDesc.str();
-                    
-                    // Boost confidence for exact cycle matches to beat fraction noise
-                    return {{nextVal, "Cyclic Operations (Length " + std::to_string(L) + ")", "", 0.99, "", "", explanation}};
                 }
             }
         }
-        return {};
+        return results;
     }
 };
-
-// ============================================================================
-// 3. COMPOSITE SOLVERS
-// ============================================================================
 
 class RobustSolverWrapper : public SequenceSolver {
     std::vector<std::unique_ptr<SequenceSolver>> layers;
