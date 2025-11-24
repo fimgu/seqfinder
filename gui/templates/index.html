@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sequence Finder</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Sequence Finder</h1>
+            <p>Unlock the pattern hidden in your numbers.</p>
+        </header>
+
+        <main>
+            <div class="input-group">
+                <input type="text" id="sequenceInput" placeholder="e.g., 1, 2, 3, 5, 8" autocomplete="off">
+                <button id="predictBtn">Find Pattern</button>
+            </div>
+
+            <div id="loading" class="hidden">
+                <div class="spinner"></div>
+                <p>Analyzing sequence...</p>
+            </div>
+
+            <div id="result" class="hidden">
+                <div class="result-grid">
+                    <div class="main-result-column">
+                        <div class="result-card">
+                            <h2>Next Number</h2>
+                            <div class="next-number" id="nextNumber">--</div>
+                        </div>
+                        <div class="info-card">
+                            <h3>Pattern Detected</h3>
+                            <p id="patternName">--</p>
+
+                            <h3>Explanation</h3>
+                            <p id="explanation">--</p>
+
+                            <h3>Formula</h3>
+                            <code id="formula">--</code>
+                        </div>
+                    </div>
+
+                    <div class="candidates-column">
+                        <div class="candidates-section">
+                            <h3>Other Possible Solutions</h3>
+                            <div id="candidatesList" class="candidates-list">
+                                <!-- Candidates injected here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="error" class="hidden">
+                <p id="errorMessage"></p>
+            </div>
+        </main>
+    </div>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+
+</html>

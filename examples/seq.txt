@@ -1,0 +1,73 @@
+6,3,4,8,19,51.5,___
+Solution: 159.5
+Explanation:
+This is one of the hardest sequences in this quiz. Every next number at position N+1, is defined as the previous number P times (N)/2 and then you add (N-1). So, if the first number (at position N=1) is 6, the next number is calculated as 6 * (1/2) + (1-1) = 3
+
+15,21,20,14,16,22,19,___
+Solution: 13
+Explanation:
+There are 2 sequences here. The first, third, fifth and seventh number have a changes of +5, -4, +3, and the other numbers have the changes -7, +8, and the change to the question mark should be the sixth number minus 9.
+
+8^19,9^18,10^17,11^16,___
+Solution: 12^15
+Explanation:
+In the base, the increments are +1 +2 +3 +4, in the power it is -1 -2 -3 -4.
+
+82,15,67,11,56,8,___
+Solution: 48
+Explanation:
+The first number minus the second number is the third number. The third number minus the fourth number is the fifth number. The fifth number minus the sixth number is the question mark.
+
+135,256,45,16,15,4,___
+Solution: 5
+Explanation:
+The first two numbers form the base. Every even number is rooted. Every even number is divided by 3.
+
+8,2,23,1/2,68,2,___
+Solution: 203
+Explanation:
+Do not get distracted by the noise, only look at the numbers at uneven positions. There, we have that each next number is * 3 - 1
+
+2/3,1/6,5/6,1/12,53/60,1/20,___
+Solution: 127/140
+Explanation:
+Look at the difference between each number and reduce the fractions. The changes are: -1/2, +2/3, -3/4, +4/5, -5/6, so the question mark should be 1/20 + 6/7, or 7/140 + 120/140.
+
+4,7/2,11,25.5,62,149.5,___
+Solution: 361
+Explanation:
+The first two numbers form the base of this sequence. The third number is twice the second number plus the first number. The fourth number is twice the third number plus the second number, etc.
+
+10,14,-56,-52,208,212,___
+Solution: -848
+Explanation:
+There are two constants that determine the changes. From the first number, the increment is 4. Next, the number is multiplied by -4. Then again 4 is added, and the next number is multiplied by -4. And so forth
+
+4,6,10,14,24,34,___
+Solution: 58
+Explanation: The even numbers at position n are the sum of (n-1) and (n-3). The uneven numbers at position n are the sum of (n-1) and (n-2).
+
+114,38,19,18,6,3,___
+Solution: 2
+Explanation: The sequence changes by /3, /2, -1, /3, /2 and finally -1
+
+
+
+5/3 3 8 17 41 92
+215/1
+If there is a /1, only return the number without the /1
+
+60,120,130,32.5,65,75
+18.75
+Explanation:
+The sequence is as follows: *2, +10, /4, *2, +10 and then we should do another /4.
+
+12,11,13,39,9.75,8.75,10.75
+32.25
+Explanation:
+The sequence -1, +2, *3, /4, and then it starts all over. So, we have again -1, +2, and the final answer is *3
+
+11,17,23,31,41,47
+59
+Explanation:
+This sequence starts at a prime number, skips the next prime number and continues with the next prime number: it repeats this pattern.

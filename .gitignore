@@ -1,0 +1,38 @@
+# Compiled binaries
+*.exe
+*.o
+*.obj
+*.a
+*.lib
+
+# Build directories
+build/
+dist/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test artifacts  
+tests/*.exe
+
+# Logs
+*.log
