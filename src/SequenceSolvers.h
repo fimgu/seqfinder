@@ -26,6 +26,17 @@ inline BigRat absRat(const BigRat& n) {
     return (n < 0) ? -n : n;
 }
 
+// --- FIBONACCI HELPER ---
+inline std::vector<BigInt> getFibSequence(size_t n) {
+    std::vector<BigInt> fibs;
+    if (n == 0) return fibs;
+    fibs.push_back(1);
+    if (n == 1) return fibs;
+    fibs.push_back(1);
+    for(size_t i=2; i<n; ++i) fibs.push_back(fibs[i-1] + fibs[i-2]);
+    return fibs;
+}
+
 // --- PRIME UTILITIES ---
 inline bool isPrime(const BigInt& n) {
     if (n <= 1) return false;
@@ -152,7 +163,6 @@ public:
                 for (int i = depth - 1; i >= 0; --i) nextVal = nextVal + table[i].back();
                 
                 double conf = 0.97;
-                // Penalize overfitting: if Degree is close to N
                 if (depth > 1 && (size_t)depth >= series.size() - 1) conf = 0.5;
                 
                 std::string expl = "Polynomial of degree " + std::to_string(depth) + ". Constant difference found at depth " + std::to_string(depth) + ".";
@@ -202,6 +212,58 @@ public:
     }
 };
 
+class VisualSolver : public SequenceSolver {
+public:
+    std::string getName() const override { return "Visual/String Pattern"; }
+    std::vector<SolverResult> solve(const std::vector<BigRat>& series) override {
+        size_t N = series.size();
+        if (N < 4) return {};
+
+        // 1. Check for Repetition Blocks (e.g., 1, 3, 3, 5, 5 -> Next is 7)
+        // Logic: 2 steps same, then jump.
+        bool doubleStep = true;
+        // Start check. If N is odd (1, 3, 3, 5, 5), last index is 4. 
+        // 1(0) != 3(1). 3(1)==3(2). 5(3)==5(4).
+        // Pattern: x_i = x_{i-1} if i is even? No.
+        // Pattern: 1/4, 3/4, 3/6, 5/6, 5/8... (Numerators: 1, 3, 3, 5, 5).
+        
+        // Generalized Repeater: Checks if values repeat K times.
+        for(int K=2; K<=3; ++K) {
+            bool k_repeat = true;
+            // Check if series[i] == series[i-1] for specific moduli
+            // For K=2: indices 1, 2; 3, 4; 5, 6 should be pairs?
+            // Or 0; 1,2; 3,4?
+            // Let's try: series[i] == series[i-1] if i % K != 0 (roughly)
+            // This is hard to generalize blindly. 
+            
+            // Let's try specifically the "Step, Repeat" pattern found in fractions
+            // 1, 3, 3, 5, 5 -> Diffs: +2, 0, +2, 0.
+            // If diffs alternate between 0 and X.
+            BigRat d1 = series[1] - series[0];
+            BigRat d2 = series[2] - series[1];
+            if ((d1 == 0 && d2 != 0) || (d1 != 0 && d2 == 0)) {
+                bool altZero = true;
+                BigRat nonZeroDiff = (d1 == 0) ? d2 : d1;
+                for(size_t i=1; i<N-1; ++i) {
+                    BigRat d = series[i+1] - series[i];
+                    if (d == 0) {
+                        if (series[i] - series[i-1] == 0) altZero = false; // Two zeros in a row
+                    } else {
+                        if (d != nonZeroDiff) altZero = false; // Diff changes
+                    }
+                }
+                if (altZero) {
+                    BigRat lastDiff = series.back() - series[N-2];
+                    BigRat nextDiff = (lastDiff == 0) ? nonZeroDiff : 0;
+                    return {{series.back() + nextDiff, "Step-Repeat Pattern", "", 0.99, "", "", "Values increase in steps, repeating each value twice."}};
+                }
+            }
+        }
+        
+        return {};
+    }
+};
+
 class DigitSolver : public SequenceSolver {
 public:
     std::string getName() const override { return "Digit Patterns"; }
@@ -222,7 +284,7 @@ public:
              if (lookAndSayNext(series[i].get_num().get_str()) != series[i+1].get_num().get_str()) { isLAS = false; break; }
         }
         if (isLAS && series.size() > 2) {
-            return {{BigRat(BigInt(lookAndSayNext(series.back().get_num().get_str()))), "Look-and-Say Sequence", "", 1.0, "", "", "Each term describes the digits of the previous term (e.g. '1211' is read as 'one 1, one 2, two 1s')."}};
+            return {{BigRat(BigInt(lookAndSayNext(series.back().get_num().get_str()))), "Look-and-Say Sequence", "", 1.0, "", "", "Each term describes the digits of the previous term."}};
         }
         return {};
     }
@@ -282,7 +344,7 @@ public:
         // 2. Sylvester
         bool sylv = true;
         for(size_t i=1; i<N; ++i) if(series[i] != (series[i-1]*series[i-1]) + series[i-1]) sylv=false;
-        if (sylv) results.push_back({(series.back()*series.back())+series.back(), "x_n = x_{n-1}^2 + x_{n-1}", "", 1.0, "", "", "Each term is the square of the previous term plus the previous term (Sylvester's sequence logic)."});
+        if (sylv) results.push_back({(series.back()*series.back())+series.back(), "x_n = x_{n-1}^2 + x_{n-1}", "", 1.0, "", "", "Each term is the square of the previous term plus the previous term."});
         
         // 3. Lag 2 Relations
         if (N >= 3) {
@@ -297,7 +359,6 @@ public:
 
         // 4. Fibonacci / Subtraction Logic
         if (N >= 3) {
-            // Check for AP first
             bool isAP = true;
             BigRat diff = series[1] - series[0];
             for(size_t i=1; i<N; ++i) if(series[i] - series[i-1] != diff) isAP = false;
@@ -325,19 +386,11 @@ public:
             if (varInc) results.push_back({series.back() + BigRat(static_cast<unsigned long>(N)) + k, "x_n = x_{n-1} + n + K", "", 1.0, "", "", "The difference between terms increases linearly."});
         }
 
-        // 6. Coupled Step Recurrence (Solves "Variable Increment Sum")
-        // x_n = x_{n-1} + x_{n-2} if n odd, x_{n-1} + x_{n-3} if n even?
-        // Checking: 4, 5, 9, 13, 22, 31
-        // 9 = 5+4. 13 = 9+4. 22 = 13+9. 31 = 22+9.
-        // Rule: x_n = x_{n-1} + x_{n-2} (if n is even index 2, 4, 6)
-        // Rule: x_n = x_{n-1} + x_{n-3} (if n is odd index 3, 5)
-        // Actually: Indices 2,3,4,5. 
-        // 2(9)=1(5)+0(4).  3(13)=2(9)+0(4).  4(22)=3(13)+2(9).  5(31)=4(22)+2(9).
-        // Parity Pattern: x_n = x_{n-1} + x_{n - (2 + (n%2))}
+        // 6. Coupled Step Recurrence
         if (N >= 4) {
             bool coupled = true;
             for(size_t i=2; i<N; ++i) {
-                size_t offset = 2 + (i % 2); // if i=2 offset=2. i=3 offset=3.
+                size_t offset = 2 + (i % 2); 
                 if (i < offset) continue; 
                 if (series[i] != series[i-1] + series[i-offset]) { coupled = false; break; }
             }
@@ -492,7 +545,7 @@ public:
 
         std::vector<SolverResult> results;
 
-        for (size_t L = 1; L < N; ++L) {
+        for (size_t L = 1; L <= N - 2; ++L) {
             std::vector<std::vector<Op>> possibleOpsPerStep(L);
             bool cyclePossible = true;
 
@@ -534,10 +587,14 @@ public:
             }
 
             if (cyclePossible) {
-                // Check if we have enough data to confirm cycle
+                // RELAXED CONFIRMATION LOGIC
                 bool confirmed = false;
-                if (L <= N/2) confirmed = true;
-                else if (N > L + 1) confirmed = true; 
+                // We need to see at least one full cycle and then SOME progress into the next
+                // e.g. if L=4, N=7 (1 full + 3 steps) is enough.
+                // Logic: We need verification checks. The loop checks (N-1)/L times.
+                // If N >= L + 3, we have good confidence.
+                if (N >= 2 * L) confirmed = true;
+                else if (N >= L + 2 && L > 2) confirmed = true; 
 
                 if (confirmed) {
                     std::vector<std::vector<Op>> allCombinations;
@@ -558,13 +615,13 @@ public:
                         opDesc << "Pattern: ";
                         for (size_t i = 0; i < L && i < N - 1; ++i) {
                             if (i > 0) opDesc << ", ";
-                            opDesc << toString(series[i]) << "→" << toString(series[i+1]);
+                            opDesc << toString(series[i]) << "->" << toString(series[i+1]);
                             const Op& o = cycleOps[i];
                             if (o.type == 'a') {
                                 if (o.val >= 0) opDesc << " (+" << toString(o.val) << ")";
                                 else opDesc << " (" << toString(o.val) << ")";
                             } else if (o.type == 'm') {
-                                opDesc << " (×" << toString(o.val) << ")";
+                                opDesc << " (*" << toString(o.val) << ")";
                             } else if (o.type == 'p') {
                                 opDesc << " (^2)";
                             }
@@ -621,12 +678,23 @@ public:
             auto bestOdd = rOdd[0];
             if (bestEven.confidence > 0.5 && bestOdd.confidence > 0.5) {
                 double avgConf = (bestEven.confidence + bestOdd.confidence) / 2.0;
-                if (avgConf > 0.9) avgConf = 0.98; 
                 
-                // [PARITY FIX]
-                // If size is 6 (Indices 0..5), next index is 6 (Even). We want rEven.
+                // BOOST CONFIDENCE
+                if (bestEven.confidence > 0.85 && bestOdd.confidence > 0.85) {
+                    avgConf = 0.995; 
+                } else if (avgConf > 0.9) {
+                    avgConf = 0.95; 
+                }
+                
+                // [PARITY FIX - ENFORCED]
+                // The next index is series.size().
+                // If size is 6 (indices 0..5), next is 6 (Even).
                 bool nextIsEven = (series.size() % 2 == 0);
-                return {{nextIsEven ? bestEven.nextValue : bestOdd.nextValue, "Interleaved Sequence", "", avgConf, "", "", "Two interleaved sequences found. Even indices: " + bestEven.formula + ". Odd indices: " + bestOdd.formula}};
+                
+                // We MUST pick the correct stream regardless of which one had slightly higher confidence
+                BigRat predicted = nextIsEven ? bestEven.nextValue : bestOdd.nextValue;
+
+                return {{predicted, "Interleaved Sequence", "", avgConf, "", "", "Two interleaved sequences found. Even indices: " + bestEven.formula + ". Odd indices: " + bestOdd.formula}};
             }
         }
         return {};
@@ -641,6 +709,7 @@ public:
     std::vector<SolverResult> solve(const std::vector<BigRat>& series) override {
         if (series.size() < 3) return {};
         
+        // 1. Standard n^p weights
         for (int p = 1; p <= 3; ++p) {
              std::vector<BigRat> wSeries;
              for (size_t i = 0; i < series.size(); ++i) {
@@ -654,9 +723,28 @@ public:
                   BigInt nextN = static_cast<unsigned long>(series.size() + 1); 
                   BigInt w = 1;
                   for(int k=0; k<p; ++k) w *= nextN;
-                  return {{res[0].nextValue / BigRat(w), "Weighted Pattern (n^" + std::to_string(p) + ")", "", res[0].confidence, "", "", "Sequence weighted by n^" + std::to_string(p) + ". Underlying pattern: " + res[0].formula}};
+                  double finalConf = res[0].confidence > 0.85 ? 0.85 : res[0].confidence;
+                  return {{res[0].nextValue / BigRat(w), "Weighted Pattern (n^" + std::to_string(p) + ")", "", finalConf, "", "", "Sequence weighted by n^" + std::to_string(p)}};
              }
         }
+
+        // 2. Fibonacci Weights (Un-simplifier logic)
+        // Many fraction sequences simplify terms. E.g. n^3/Fib(n). 
+        // To solve, multiply by Fib(n) and see if result is clean.
+        // We try 2 offsets for Fib (starting 1,1 or 1,2)
+        for(int offset = 0; offset <= 1; ++offset) {
+             auto fibs = getFibSequence(series.size() + 2 + offset); 
+             std::vector<BigRat> wSeries;
+             for (size_t i = 0; i < series.size(); ++i) {
+                 wSeries.push_back(series[i] * BigRat(fibs[i+offset]));
+             }
+             auto res = sub->solve(wSeries);
+             if (!res.empty() && res[0].confidence > 0.8) {
+                  BigInt nextFib = fibs[series.size() + offset];
+                  return {{res[0].nextValue / BigRat(nextFib), "Weighted Pattern (Fibonacci)", "", 0.95, "", "", "Sequence weighted by Fibonacci numbers."}};
+             }
+        }
+
         return {};
     }
 };
@@ -693,11 +781,13 @@ class FractionSolver : public SequenceSolver {
     std::unique_ptr<RobustSolverWrapper> sub;
     std::unique_ptr<InterleavedSolver> inter;
     std::unique_ptr<WeightedSolver> weight;
+    std::unique_ptr<VisualSolver> visual;
 public:
     FractionSolver() { 
         sub = std::make_unique<RobustSolverWrapper>();
         inter = std::make_unique<InterleavedSolver>();
         weight = std::make_unique<WeightedSolver>();
+        visual = std::make_unique<VisualSolver>();
     }
     std::string getName() const override { return "Fraction Splitter"; }
     std::vector<SolverResult> solve(const std::vector<BigRat>& series) override {
@@ -711,6 +801,19 @@ public:
 
         if (!hasFrac) return {};
 
+        std::vector<SolverResult> results;
+
+        // 1. Try Visual Patterns on Components (e.g. 1,3,3,5,5)
+        auto vNum = visual->solve(nums);
+        auto vDen = visual->solve(dens);
+        if (!vNum.empty() && !vDen.empty()) {
+            SolverResult res = {vNum[0].nextValue / vDen[0].nextValue, "Visual Fraction Pattern", "", 0.99, "", "", "Pattern found in numerator/denominator structure."};
+            res.unsimplifiedNum = toString(vNum[0].nextValue.get_num());
+            res.unsimplifiedDen = toString(vDen[0].nextValue.get_num());
+            results.push_back(res);
+        }
+
+        // 2. Try Independent Numerator/Denominator Patterns
         auto solvePart = [&](const std::vector<BigRat>& p) {
             auto r = sub->solve(p);
             if (!r.empty() && r[0].confidence > 0.5) return r;
@@ -719,11 +822,10 @@ public:
         auto rNum = solvePart(nums);
         auto rDen = solvePart(dens);
         
-        std::vector<SolverResult> results;
-
         if (!rNum.empty() && !rDen.empty()) {
             double conf = (rNum[0].confidence + rDen[0].confidence)/2;
-            if (hasFrac) conf = std::min(0.99, conf + 0.1);
+            if (hasFrac && conf > 0.8) conf = 0.99; 
+            else if (hasFrac) conf = std::min(0.99, conf + 0.1);
             
             SolverResult finalRes = {rNum[0].nextValue / rDen[0].nextValue, "Fraction Pattern", "", conf, "", "", "Numerator pattern: " + rNum[0].formula + ". Denominator pattern: " + rDen[0].formula};
             finalRes.unsimplifiedNum = toString(rNum[0].nextValue.get_num());
@@ -731,10 +833,11 @@ public:
             results.push_back(finalRes);
         }
         
+        // 3. Try Weighted Solver (Factorial/Fibonacci un-simplifiers)
         auto wRes = weight->solve(series);
         if (!wRes.empty()) {
-            if (results.empty() || wRes[0].confidence > results[0].confidence) {
-                results.insert(results.begin(), wRes[0]);
+            if (results.empty() || wRes[0].confidence > results[0].confidence + 0.1) {
+                results.push_back(wRes[0]);
             } else {
                 results.push_back(wRes[0]);
             }
@@ -752,6 +855,7 @@ class GrandUnifiedSolver : public SequenceSolver {
     std::vector<std::unique_ptr<SequenceSolver>> layers;
 public:
     GrandUnifiedSolver() {
+        layers.push_back(std::make_unique<VisualSolver>()); // Check simple string-like patterns first
         layers.push_back(std::make_unique<DigitSolver>());
         layers.push_back(std::make_unique<StandardMathSolver>());
         layers.push_back(std::make_unique<RecursiveSolver>()); 
