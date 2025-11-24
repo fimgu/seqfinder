@@ -533,8 +533,27 @@ public:
                     else if (op.type == 'm') nextVal = series.back() * op.val;
                     else if (op.type == 'p') nextVal = series.back() * series.back();
                     
+                    // Build operation description with number transitions
+                    std::stringstream opDesc;
+                    opDesc << "Pattern: ";
+                    for (size_t i = 0; i < L && i < N - 1; ++i) {
+                        if (i > 0) opDesc << ", ";
+                        opDesc << toString(series[i]) << "→" << toString(series[i+1]);
+                        const Op& o = cycleOps[i];
+                        if (o.type == 'a') {
+                            if (o.val >= 0) opDesc << " (+" << toString(o.val) << ")";
+                            else opDesc << " (" << toString(o.val) << ")";
+                        } else if (o.type == 'm') {
+                            opDesc << " (×" << toString(o.val) << ")";
+                        } else if (o.type == 'p') {
+                            opDesc << " (^2)";
+                        }
+                    }
+                    opDesc << ", repeating every " << L << " steps";
+                    std::string explanation = opDesc.str();
+                    
                     // Boost confidence for exact cycle matches to beat fraction noise
-                    return {{nextVal, "Cyclic Operations (Length " + std::to_string(L) + ")", "", 0.99, "", "", "Sequence follows a cyclic pattern of operations with length " + std::to_string(L)}};
+                    return {{nextVal, "Cyclic Operations (Length " + std::to_string(L) + ")", "", 0.99, "", "", explanation}};
                 }
             }
         }
