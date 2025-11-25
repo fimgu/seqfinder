@@ -21,31 +21,27 @@ jobs:
         with:
           version: 3.1.51 # Pin a recent stable version
 
-      - name: Install Dependencies (GMP)
+      - name: Build GMP
         run: |
-          # Emscripten has a port for GMP, we just need to link it.
-          # But sometimes it's easier to build it or use a pre-built one.
-          # The easiest way with Emscripten is to use `-s USE_GMP=1`.
-          echo "Using Emscripten's built-in GMP port."
+          wget https://gmplib.org/download/gmp/gmp-6.3.0.tar.xz
+          tar xf gmp-6.3.0.tar.xz
+          cd gmp-6.3.0
+          emconfigure ./configure --disable-assembly --host=none --enable-cxx --prefix=$PWD/install
+          emmake make -j4
+          emmake make install
+          cd ..
 
       - name: Compile to WASM
         run: |
           mkdir -p dist
           
-          # Compile C++ to WASM
-          # -O3: Optimize for speed
-          # -s USE_GMP=1: Link with GMP
-          # -s NO_EXIT_RUNTIME=1: Keep runtime alive for callbacks
-          # -s "EXPORTED_RUNTIME_METHODS=['ccall', 'cwrap']": Allow JS to call C++
-          # --bind: Use Embind
-          # -s ALLOW_MEMORY_GROWTH=1: Allow memory to grow if needed
-          # -s MODULARIZE=1: Wrap in a module function
-          # -s EXPORT_NAME="createMyModule": Name of the module factory
-          
+          # Compile C++ to WASM linking against our built GMP
           emcc src/wasm_interface.cpp \
             -I src \
+            -I gmp-6.3.0/install/include \
+            -L gmp-6.3.0/install/lib \
             -O3 \
-            -lgmp -lgmpxx \
+            -lgmpxx -lgmp \
             -s NO_EXIT_RUNTIME=1 \
             -s ALLOW_MEMORY_GROWTH=1 \
             --bind \
