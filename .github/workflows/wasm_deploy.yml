@@ -1,0 +1,62 @@
+name: Build and Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.51 # Pin a recent stable version
+
+      - name: Install Dependencies (GMP)
+        run: |
+          # Emscripten has a port for GMP, we just need to link it.
+          # But sometimes it's easier to build it or use a pre-built one.
+          # The easiest way with Emscripten is to use `-s USE_GMP=1`.
+          echo "Using Emscripten's built-in GMP port."
+
+      - name: Compile to WASM
+        run: |
+          mkdir -p dist
+          
+          # Compile C++ to WASM
+          # -O3: Optimize for speed
+          # -s USE_GMP=1: Link with GMP
+          # -s NO_EXIT_RUNTIME=1: Keep runtime alive for callbacks
+          # -s "EXPORTED_RUNTIME_METHODS=['ccall', 'cwrap']": Allow JS to call C++
+          # --bind: Use Embind
+          # -s ALLOW_MEMORY_GROWTH=1: Allow memory to grow if needed
+          # -s MODULARIZE=1: Wrap in a module function
+          # -s EXPORT_NAME="createMyModule": Name of the module factory
+          
+          emcc src/wasm_interface.cpp \
+            -I src \
+            -O3 \
+            -s USE_GMP=1 \
+            -s NO_EXIT_RUNTIME=1 \
+            -s ALLOW_MEMORY_GROWTH=1 \
+            --bind \
+            -o dist/seqfinder.js
+
+      - name: Prepare Static Files
+        run: |
+          cp gui/wasm/index.html dist/index.html
+          cp gui/wasm/style.css dist/style.css
+
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: dist
