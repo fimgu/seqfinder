@@ -75,8 +75,8 @@ int main(int argc, char** argv) {
              std::cout << "  \"numerator\": \"" << best.unsimplifiedNum << "\",\n";
              std::cout << "  \"denominator\": \"" << best.unsimplifiedDen << "\",\n";
         } else {
-             std::cout << "  \"numerator\": \"" << toString(best.nextValue.get_num()) << "\",\n";
-             std::cout << "  \"denominator\": \"" << toString(best.nextValue.get_den()) << "\",\n";
+             std::cout << "  \"numerator\": \"" << best.nextValue.get_num().get_str() << "\",\n";
+             std::cout << "  \"denominator\": \"" << best.nextValue.get_den().get_str() << "\",\n";
         }
 
         std::cout << "  \"formula\": \"" << escapeJSON(best.formula) << "\",\n";
