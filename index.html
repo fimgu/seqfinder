@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sequence Finder (WASM)</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Sequence Finder</h1>
+            <p class="subtitle">Enter a sequence of numbers to find the next term and pattern.</p>
+        </header>
+
+        <main>
+            <div class="input-section">
+                <div class="input-wrapper">
+                    <input type="text" id="sequenceInput" placeholder="e.g., 1, 2, 4, 8" autocomplete="off">
+                    <button id="solveBtn" onclick="solveSequence()">
+                        <span class="btn-text">Find Pattern</span>
+                        <div class="loader" id="loader"></div>
+                    </button>
+                </div>
+                <div id="error-message" class="error-message"></div>
+            </div>
+
+            <div class="results-container" id="resultsContainer" style="display: none;">
+                <div class="main-result">
+                    <div class="next-number-card">
+                        <span class="label">Next Number</span>
+                        <div class="value" id="nextNumber">--</div>
+                    </div>
+
+                    <div class="info-card">
+                        <div class="info-row">
+                            <span class="label">Pattern</span>
+                            <span class="value" id="patternName">--</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">Formula</span>
+                            <span class="value code" id="formula">--</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">Confidence</span>
+                            <div class="confidence-wrapper">
+                                <div class="confidence-bar-bg">
+                                    <div class="confidence-bar-fill" id="confidenceBar"></div>
+                                </div>
+                                <span class="confidence-text" id="confidenceText">--%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="candidates-section" id="candidatesSection">
+                    <h3>Other Possible Patterns</h3>
+                    <div class="candidates-list" id="candidatesList">
+                        <!-- Candidates will be inserted here -->
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Powered by WebAssembly & C++</p>
+        </footer>
+    </div>
+
+    <script>
+        var Module = {
+            onRuntimeInitialized: function () {
+                console.log('WASM Module Initialized');
+                document.getElementById('solveBtn').disabled = false;
+            }
+        };
+    </script>
+    <script src="seqfinder.js"></script>
+    <script>
+        async function solveSequence() {
+            const input = document.getElementById('sequenceInput').value;
+            const btn = document.getElementById('solveBtn');
+            const loader = document.getElementById('loader');
+            const btnText = document.querySelector('.btn-text');
+            const errorDiv = document.getElementById('error-message');
+            const resultsContainer = document.getElementById('resultsContainer');
+
+            if (!input.trim()) {
+                showError('Please enter a sequence.');
+                return;
+            }
+
+            // Reset UI
+            errorDiv.style.display = 'none';
+            resultsContainer.style.display = 'none';
+            btn.disabled = true;
+            loader.style.display = 'block';
+            btnText.style.visibility = 'hidden';
+
+            try {
+                // Normalize input for C++ (replace commas with spaces)
+                const normalizedInput = input.replace(/,/g, ' ');
+
+                // Call WASM function
+                const jsonStr = Module.solve_sequence_json(normalizedInput);
+                const data = JSON.parse(jsonStr);
+
+                if (data.error) {
+                    showError(data.error);
+                } else if (data.success) {
+                    displayResults(data);
+                } else {
+                    showError('Unknown error occurred.');
+                }
+
+            } catch (e) {
+                console.error(e);
+                showError('An error occurred while processing the sequence.');
+            } finally {
+                btn.disabled = false;
+                loader.style.display = 'none';
+                btnText.style.visibility = 'visible';
+            }
+        }
+
+        function showError(msg) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = msg;
+            errorDiv.style.display = 'block';
+        }
+
+        function displayResults(data) {
+            document.getElementById('resultsContainer').style.display = 'grid';
+
+            // Main Result
+            document.getElementById('nextNumber').textContent = data.next_number;
+            document.getElementById('patternName').textContent = data.pattern;
+            document.getElementById('formula').textContent = data.formula;
+
+            const confPercent = Math.round(data.confidence * 100);
+            document.getElementById('confidenceText').textContent = confPercent + '%';
+            document.getElementById('confidenceBar').style.width = confPercent + '%';
+
+            // Candidates
+            const list = document.getElementById('candidatesList');
+            list.innerHTML = '';
+
+            if (data.candidates && data.candidates.length > 1) {
+                // Skip the first one as it's the main result
+                for (let i = 1; i < data.candidates.length; i++) {
+                    const cand = data.candidates[i];
+                    const item = document.createElement('div');
+                    item.className = 'candidate-item';
+                    item.innerHTML = `
+                        <div class="candidate-header">
+                            <span class="candidate-next">${cand.next}</span>
+                            <span class="candidate-conf">${Math.round(cand.confidence * 100)}%</span>
+                        </div>
+                        <div class="candidate-details">
+                            <span class="candidate-pattern">${cand.pattern}</span>
+                        </div>
+                    `;
+                    list.appendChild(item);
+                }
+                document.getElementById('candidatesSection').style.display = 'block';
+            } else {
+                document.getElementById('candidatesSection').style.display = 'none';
+            }
+        }
+    </script>
+</body>
+
+</html>
