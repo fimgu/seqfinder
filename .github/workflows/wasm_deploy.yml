@@ -45,7 +45,7 @@ jobs:
           emcc src/wasm_interface.cpp \
             -I src \
             -O3 \
-            -s USE_GMP=1 \
+            -lgmp -lgmpxx \
             -s NO_EXIT_RUNTIME=1 \
             -s ALLOW_MEMORY_GROWTH=1 \
             --bind \
