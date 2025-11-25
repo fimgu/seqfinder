@@ -269,6 +269,200 @@ button:disabled {
     color: var(--text-muted);
 }
 
+input[type="text"]:focus {
+    border-color: var(--primary);
+}
+
+button {
+    background: var(--primary);
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: background 0.2s;
+    min-width: 140px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+button:hover {
+    background: var(--primary-hover);
+}
+
+button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.loader {
+    display: none;
+    width: 20px;
+    height: 20px;
+    border: 2px solid #ffffff;
+    border-bottom-color: transparent;
+    border-radius: 50%;
+    animation: rotation 1s linear infinite;
+    position: absolute;
+}
+
+@keyframes rotation {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.error-message {
+    color: var(--error);
+    margin-top: 1rem;
+    font-size: 0.9rem;
+    display: none;
+}
+
+.results-container {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+    .results-container {
+        grid-template-columns: 3fr 2fr;
+    }
+}
+
+.main-result {
+    background: var(--card-bg);
+    border-radius: 1rem;
+    padding: 2rem;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.next-number-card {
+    text-align: center;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
+}
+
+.next-number-card .label {
+    display: block;
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem;
+}
+
+.next-number-card .value {
+    font-size: 3rem;
+    font-weight: 700;
+    color: var(--primary);
+    line-height: 1;
+}
+
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+}
+
+.info-row .label {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.info-row .value {
+    font-weight: 500;
+    text-align: right;
+}
+
+.info-row .value.code {
+    font-family: monospace;
+    background: #f1f5f9;
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+    font-size: 0.9rem;
+}
+
+.confidence-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 60%;
+    justify-content: flex-end;
+}
+
+.confidence-bar-bg {
+    flex: 1;
+    height: 6px;
+    background: #e2e8f0;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.confidence-bar-fill {
+    height: 100%;
+    background: var(--success);
+    width: 0%;
+    transition: width 0.5s ease-out;
+}
+
+.candidates-section {
+    background: var(--card-bg);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}
+
+.candidates-section h3 {
+    font-size: 1rem;
+    margin-bottom: 1rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.candidates-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.candidate-item {
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    background: #f8fafc;
+}
+
+.candidate-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.25rem;
+}
+
+.candidate-next {
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+.candidate-conf {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
 .candidate-pattern {
     font-size: 0.85rem;
     color: var(--text-muted);
@@ -279,4 +473,49 @@ footer {
     color: var(--text-muted);
     font-size: 0.875rem;
     margin-top: auto;
+}
+
+/* Mobile Optimizations */
+@media (max-width: 640px) {
+    body {
+        padding: 1rem;
+    }
+
+    h1 {
+        font-size: 2rem;
+    }
+
+    .input-section {
+        padding: 1.5rem;
+    }
+
+    .input-wrapper {
+        flex-direction: column;
+    }
+
+    button {
+        width: 100%;
+    }
+
+    .next-number-card .value {
+        font-size: 2.5rem;
+        word-break: break-all;
+        /* Prevent overflow for large numbers */
+    }
+
+    .info-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.25rem;
+    }
+
+    .info-row .value {
+        text-align: left;
+        width: 100%;
+    }
+
+    .confidence-wrapper {
+        width: 100%;
+        justify-content: flex-start;
+    }
 }
