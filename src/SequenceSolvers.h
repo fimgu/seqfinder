@@ -143,6 +143,17 @@ struct SolverResult {
 };
 
 inline bool compareResults(const SolverResult& a, const SolverResult& b) {
+    if (std::abs(a.confidence - b.confidence) < 0.001) {
+        // Heuristic tie-breaker:
+        // 1. Prefer non-recurrence (explicit formulas)
+        bool aIsRec = a.formula.find("Recurrence") != std::string::npos;
+        bool bIsRec = b.formula.find("Recurrence") != std::string::npos;
+        if (aIsRec && !bIsRec) return false; 
+        if (!aIsRec && bIsRec) return true;
+        
+        // 2. Prefer shorter formulas (Simpler)
+        return a.formula.length() < b.formula.length();
+    }
     return a.confidence > b.confidence;
 }
 
@@ -156,6 +167,44 @@ public:
 // ============================================================================
 // SOLVERS
 // ============================================================================
+
+class PerfectPowerSolver : public SequenceSolver {
+public:
+    std::string getName() const override { return "Perfect Powers"; }
+    std::vector<SolverResult> solve(const std::vector<BigRat>& series) override {
+        if (series.size() < 3) return {};
+        
+        for (int p = 2; p <= 5; ++p) {
+            std::vector<BigRat> roots;
+            bool allPowers = true;
+            for (const auto& val : series) {
+                if (val < 0) { allPowers = false; break; } 
+                BigInt num = val.get_num();
+                BigInt den = val.get_den();
+                BigInt rNum, rDen;
+                if (mpz_root(rNum.get_mpz_t(), num.get_mpz_t(), p) == 0) { allPowers = false; break; }
+                if (mpz_root(rDen.get_mpz_t(), den.get_mpz_t(), p) == 0) { allPowers = false; break; }
+                roots.push_back(BigRat(rNum, rDen));
+            }
+            
+            if (allPowers) {
+                BigRat diff = roots[1] - roots[0];
+                bool linear = true;
+                for(size_t i=1; i<roots.size(); ++i) {
+                    if (roots[i] - roots[i-1] != diff) { linear = false; break; }
+                }
+                if (linear) {
+                    BigRat nextRoot = roots.back() + diff;
+                    BigInt nextValNum, nextValDen;
+                    mpz_pow_ui(nextValNum.get_mpz_t(), nextRoot.get_num().get_mpz_t(), p);
+                    mpz_pow_ui(nextValDen.get_mpz_t(), nextRoot.get_den().get_mpz_t(), p);
+                    return {{BigRat(nextValNum, nextValDen), "Perfect Power (n^" + std::to_string(p) + ")", "", 1.0, "", "", "Sequence is a perfect power of a linear progression."}};
+                }
+            }
+        }
+        return {};
+    }
+};
 
 class PolynomialSolver : public SequenceSolver {
 public:
@@ -181,6 +230,7 @@ public:
                 BigRat nextVal = row[0]; 
                 for (int i = depth - 1; i >= 0; --i) nextVal = nextVal + table[i].back();
                 double conf = 0.97;
+                // Penalty for high degree relative to sequence length (overfitting)
                 if (depth > 1 && (size_t)depth >= series.size() - 1) conf = 0.5;
                 return {{nextVal, "Polynomial (Degree " + std::to_string(depth) + ")", "", conf, "", "", "Polynomial sequence."}};
             }
@@ -199,8 +249,6 @@ public:
     std::vector<SolverResult> solve(const std::vector<BigRat>& series) override {
         size_t N = series.size();
         if (N < 3) return {};
-
-        // 1. Step Repeat (1, 3, 3, 5, 5...)
         if (N >= 4) {
             BigRat d1 = series[1] - series[0];
             BigRat d2 = series[2] - series[1];
@@ -215,23 +263,20 @@ public:
                 if (altZero) {
                     BigRat lastDiff = series.back() - series[N-2];
                     BigRat nextDiff = (lastDiff == 0) ? step : 0;
-                    return {{series.back() + nextDiff, "Visual: Step-Repeat", "", 0.99, "", "", "Values repeat once then step."}};
+                    return {{series.back() + nextDiff, "Visual: Step-Repeat", "", 1.0, "", "", "Values repeat once then step."}};
                 }
             }
         }
-
-        // 2. Simple Linear
         BigRat diff = series[1] - series[0];
         bool isLin = true;
         for(size_t i=1; i<N; ++i) if (series[i] - series[i-1] != diff) isLin = false;
-        if (isLin) return {{series.back() + diff, "Linear", "", 0.95, "", "", "Simple linear progression."}};
+        if (isLin) return {{series.back() + diff, "Linear", "", 1.0, "", "", "Simple linear progression."}};
         
-        // 3. Alternating (A, B, A...)
         if (N >= 3) {
             bool alt = true;
             for(size_t i=2; i<N; ++i) if (series[i] != series[i-2]) alt = false;
             if (alt) {
-                return {{series[N-2], "Alternating (Period 2)", "", 0.95, "", "", "Values alternate A, B, A..."}};
+                return {{series[N-2], "Alternating (Period 2)", "", 0.98, "", "", "Values alternate A, B, A..."}};
             }
         }
         return {};
@@ -242,13 +287,31 @@ class PowerSolver : public SequenceSolver {
 public:
     std::string getName() const override { return "Geometric"; }
     std::vector<SolverResult> solve(const std::vector<BigRat>& series) override {
-        if (series.size() < 3 || series[0] == 0) return {};
-        BigRat ratio = series[1] / series[0];
-        if (ratio == 1) return {}; 
-        for(size_t i=1; i<series.size()-1; ++i) {
-            if (series[i] == 0 || series[i+1] / series[i] != ratio) return {};
+        if (series.size() < 3) return {};
+        
+        // Tail Search for offset geometric sequences
+        for(size_t skip=0; skip <= 2 && skip + 3 <= series.size(); ++skip) {
+            BigRat s0 = series[skip];
+            BigRat s1 = series[skip+1];
+            if (s0 == 0) continue;
+            
+            BigRat ratio = s1 / s0;
+            // Only accept integer ratios or simple fractions, reject x1
+            if (ratio == 1) continue; 
+            
+            bool match = true;
+            for(size_t i=skip; i<series.size()-1; ++i) {
+                if (series[i] == 0 || series[i+1] / series[i] != ratio) { match = false; break; }
+            }
+            
+            if (match) {
+                // FIX: High confidence for offset geometric (it's a very specific pattern)
+                double conf = (skip == 0) ? 1.0 : 0.99; 
+                std::string name = (skip == 0) ? "Geometric" : "Geometric (with offset)";
+                return {{series.back() * ratio, name, "", conf, "", "", "Geometric progression."}};
+            }
         }
-        return {{series.back() * ratio, "Geometric", "", 1.0, "", "", "Geometric progression."}};
+        return {};
     }
 };
 
@@ -337,13 +400,11 @@ public:
 class RecursiveSolver : public SequenceSolver {
 public:
     std::string getName() const override { return "Recursive Non-Linear"; }
-    
     std::vector<SolverResult> solve(const std::vector<BigRat>& series) override {
         std::vector<SolverResult> results;
         size_t N = series.size();
         if (N < 3) return {};
         
-        // 1. Basic Relations
         bool sq = true, sylv = true;
         for(size_t i=1; i<N; ++i) {
              if(series[i] != series[i-1]*series[i-1]) sq=false;
@@ -352,8 +413,7 @@ public:
         if (sq) results.push_back({series.back()*series.back(), "x_n = x_{n-1}^2", "", 1.0, "", "", ""});
         if (sylv) results.push_back({(series.back()*series.back())+series.back(), "x_n = x_{n-1}^2 + x_{n-1}", "", 1.0, "", "", ""});
         
-        // 2. Lag 2
-        if (N >= 3) {
+        if (N >= 4) {
             bool lag1 = true, lag2 = true;
             for(size_t i=2; i<N; ++i) {
                 if (series[i] != (series[i-1] * series[i-2]) - series[i-2]) lag1 = false;
@@ -362,8 +422,6 @@ public:
             if (lag1) results.push_back({(series.back() * series[N-2]) - series[N-2], "x_n = x_{n-1}x_{n-2} - x_{n-2}", "", 1.0, "", "", ""});
             if (lag2) results.push_back({(series.back() * series[N-2]) - series.back(), "x_n = x_{n-1}x_{n-2} - x_{n-1}", "", 1.0, "", "", ""});
         }
-
-        // 3. Affine Recurrence: x_n = A * x_{n-1} + B
         if (N >= 3) {
              BigRat num = series[2] - series[1];
              BigRat den = series[1] - series[0];
@@ -377,7 +435,6 @@ public:
                  if (match) {
                      double conf = 0.98;
                      if (N == 3) {
-                         // Penalize short sequences unless coefficients are small integers
                          if (A.get_den() == 1 && B.get_den() == 1 && 
                              absRat(A) < 20 && absRat(B) < 20) conf = 0.90;
                          else conf = 0.5;
@@ -387,15 +444,12 @@ public:
                  }
              }
         }
-
-        // 4. Variable Linear Recurrence: x_n = x_{n-1}(Ai + B) + (Ci + D)
-        if (N >= 5) { // Need at least 4 equations
+        if (N >= 5) {
              std::vector<std::vector<BigRat>> mat;
              std::vector<BigRat> vec;
              for(size_t i=1; i<=4; ++i) { 
                  if (i >= N) break;
                  std::vector<BigRat> row;
-                 // FIX: Explicit cast to unsigned long for BigRat conversion
                  BigRat idx = static_cast<unsigned long>(i); 
                  row.push_back(idx * series[i-1]);
                  row.push_back(series[i-1]);
@@ -410,22 +464,19 @@ public:
                      BigRat A = sol[0], B = sol[1], C = sol[2], D = sol[3];
                      bool match = true;
                      for(size_t i=1; i<N; ++i) {
-                         // FIX: Explicit cast
                          BigRat idx = static_cast<unsigned long>(i);
                          BigRat pred = series[i-1] * (A*idx + B) + (C*idx + D);
                          if (pred != series[i]) { match = false; break; }
                      }
                      if (match) {
-                         // FIX: Explicit cast
                          BigRat nextIdx = static_cast<unsigned long>(N);
                          BigRat nextVal = series.back() * (A*nextIdx + B) + (C*nextIdx + D);
-                         results.push_back({nextVal, "Variable Linear Recurrence", "", 0.99, "", "", "x_n = x_{n-1}(An+B) + (Cn+D)"});
+                         double conf = (N >= 7) ? 0.99 : 0.80; 
+                         results.push_back({nextVal, "Variable Linear Recurrence", "", conf, "", "", "x_n = x_{n-1}(An+B) + (Cn+D)"});
                      }
                  }
              }
         }
-
-        // 5. Fibonacci/Subtraction
         if (N >= 3) {
             bool isAP = true;
             BigRat diff = series[1] - series[0];
@@ -442,8 +493,6 @@ public:
                 if (fibSub2) results.push_back({series[N-2] - series.back(), "x_n = x_{n-2} - x_{n-1}", "", 0.99, "", "", ""});
             }
         }
-
-        // 6. Variable Increment
         if (N >= 3) {
             bool varInc = true;
             BigRat k = (series[1] - series[0]) - 1;
@@ -452,8 +501,6 @@ public:
             }
             if (varInc) results.push_back({series.back() + BigRat(static_cast<unsigned long>(N)) + k, "x_n = x_{n-1} + n + K", "", 1.0, "", "", ""});
         }
-
-        // 7. Coupled Step
         if (N >= 4) {
             bool coupled = true;
             for(size_t i=2; i<N; ++i) {
@@ -463,10 +510,10 @@ public:
             }
             if (coupled) {
                 size_t offset = 2 + (N % 2);
-                results.push_back({series.back() + series[N-offset], "Coupled Step Recurrence", "", 1.0, "", "", ""});
+                double conf = (N >= 6) ? 0.99 : 0.90;
+                results.push_back({series.back() + series[N-offset], "Coupled Step Recurrence", "", conf, "", "", ""});
             }
         }
-
         return results;
     }
 };
@@ -536,7 +583,7 @@ public:
             auto results = poly->solve(indices);
             if (!results.empty() && results[0].confidence > 0.5) {
                 BigInt nextIdx = results[0].nextValue.get_num();
-                if (nextIdx > 0) return {{BigRat(getNthPrime(nextIdx.get_si())), "Indexed Primes", "", 0.99, "", "", "Sequence of indexed primes."}};
+                if (nextIdx > 0) return {{BigRat(getNthPrime(nextIdx.get_si())), "Indexed Primes", "", 0.995, "", "", "Sequence of indexed primes."}};
             }
         }
         
@@ -576,79 +623,106 @@ public:
 
 class CyclicOpSolver : public SequenceSolver {
     struct Op { char type; BigRat val; }; 
-    void generateCombinations(size_t L, size_t currentStep, std::vector<Op>& currentOps, 
-        const std::vector<std::vector<Op>>& possibleOpsPerStep, std::vector<std::vector<Op>>& allCombinations) {
-        if (currentStep == L) {
-            allCombinations.push_back(currentOps);
-            return;
-        }
-        for (const auto& op : possibleOpsPerStep[currentStep]) {
-            currentOps[currentStep] = op;
-            generateCombinations(L, currentStep + 1, currentOps, possibleOpsPerStep, allCombinations);
-        }
+    
+    double getComplexity(const BigRat& r) {
+        BigInt n = abs(r.get_num());
+        BigInt d = r.get_den();
+        if (n > 1000000 || d > 1000000) return 1e9;
+        return n.get_d() + d.get_d();
     }
+
 public:
     std::string getName() const override { return "Cyclic Operations"; }
     std::vector<SolverResult> solve(const std::vector<BigRat>& series) override {
         size_t N = series.size();
-        if (N < 4) return {}; 
+        if (N < 3) return {};
 
-        for (size_t L = 1; L <= N/2; ++L) {
-            std::vector<std::vector<Op>> possibleOpsPerStep(L);
-            bool possible = true;
-            for (size_t i = 0; i < L; ++i) {
-                std::vector<Op> ops;
-                // Check +
-                BigRat diff = series[i+1] - series[i];
-                bool constDiff = true;
-                for (size_t k = i; k < N-1; k += L) {
-                    if (series[k+1] - series[k] != diff) constDiff = false;
+        std::vector<SolverResult> results;
+
+        for (size_t L = 1; L < N; ++L) {
+            std::vector<Op> cycleOps(L);
+            bool cycleValid = true;
+
+            for (size_t step = 0; step < L; ++step) {
+                std::vector<std::pair<BigRat, BigRat>> pairs;
+                for (size_t i = step; i < N - 1; i += L) {
+                    pairs.push_back({series[i], series[i+1]});
                 }
-                if (constDiff) ops.push_back({'+', diff});
+                if (pairs.empty()) continue; 
 
-                // Check *
-                if (series[i] != 0) {
-                    BigRat ratio = series[i+1] / series[i];
-                    bool constRatio = true;
-                    for (size_t k = i; k < N-1; k += L) {
-                        if (series[k] == 0 || series[k+1] / series[k] != ratio) constRatio = false;
+                bool foundOp = false;
+                // 1. Power
+                bool isSq = true;
+                for (auto& p : pairs) {
+                    if (p.first == 0 || p.second != p.first * p.first) isSq = false;
+                }
+                if (isSq) {
+                    cycleOps[step] = {'^', 2};
+                    foundOp = true;
+                    continue; 
+                }
+
+                // 2. Mul
+                bool isMul = true;
+                BigRat mulVal;
+                if (pairs[0].first == 0) {
+                     if (pairs[0].second == 0) mulVal = 0; 
+                     else isMul = false;
+                } else {
+                     mulVal = pairs[0].second / pairs[0].first;
+                }
+                if (isMul) {
+                    for (auto& p : pairs) {
+                        if (p.first == 0) {
+                            if (p.second != 0) isMul = false;
+                        } else {
+                            if (p.second / p.first != mulVal) isMul = false;
+                        }
                     }
-                    if (constRatio) ops.push_back({'*', ratio});
-                }
-                
-                // Check ^ (Power)
-                if (series[i] > 0 && series[i+1] > 0) {
-                     // Simple check for square/cube
-                     if (series[i+1] == series[i]*series[i]) {
-                         bool constPow = true;
-                         for(size_t k=i; k<N-1; k+=L) if(series[k+1] != series[k]*series[k]) constPow = false;
-                         if(constPow) ops.push_back({'^', 2});
-                     }
                 }
 
-                if (ops.empty()) { possible = false; break; }
-                possibleOpsPerStep[i] = ops;
+                // 3. Add
+                bool isAdd = true;
+                BigRat addVal = pairs[0].second - pairs[0].first;
+                for (auto& p : pairs) {
+                    if (p.second - p.first != addVal) isAdd = false;
+                }
+
+                if (isMul && isAdd) {
+                    if (getComplexity(mulVal) <= getComplexity(addVal)) {
+                        cycleOps[step] = {'*', mulVal};
+                    } else {
+                        cycleOps[step] = {'+', addVal};
+                    }
+                    foundOp = true;
+                } else if (isMul) {
+                    cycleOps[step] = {'*', mulVal};
+                    foundOp = true;
+                } else if (isAdd) {
+                    cycleOps[step] = {'+', addVal};
+                    foundOp = true;
+                } else {
+                    cycleValid = false; 
+                    break;
+                }
             }
 
-            if (possible) {
-                std::vector<Op> currentOps(L);
-                std::vector<std::vector<Op>> allCombinations;
-                generateCombinations(L, 0, currentOps, possibleOpsPerStep, allCombinations);
-                
-                if (!allCombinations.empty()) {
-                    auto& ops = allCombinations[0];
-                    BigRat nextVal = series.back();
-                    size_t stepIdx = (N - 1) % L; 
-                    Op op = ops[stepIdx];
-                    if (op.type == '+') nextVal = nextVal + op.val;
-                    else if (op.type == '*') nextVal = nextVal * op.val;
-                    else if (op.type == '^') nextVal = nextVal * nextVal; // Assuming ^2
-                    
-                    return {{nextVal, "Cyclic Operations (Length " + std::to_string(L) + ")", "", 0.96, "", "", "Operations repeat every L steps."}};
-                }
+            if (cycleValid) {
+                size_t stepIdx = (N - 1) % L;
+                Op op = cycleOps[stepIdx];
+                BigRat nextVal;
+                if (op.type == '+') nextVal = series.back() + op.val;
+                else if (op.type == '*') nextVal = series.back() * op.val;
+                else if (op.type == '^') nextVal = series.back() * series.back();
+
+                double confidence = 0.96; 
+                if (N >= 2*L) confidence = 0.999;
+                else if (N > L + 1) confidence = 0.995; 
+                else confidence = 0.6; 
+                results.push_back({nextVal, "Cyclic Operations (Length " + std::to_string(L) + ")", "", confidence, "", "", "Operations repeat every L steps."});
             }
         }
-        return {};
+        return results;
     }
 };
 
@@ -672,7 +746,6 @@ public:
             if (i % 2 == 0) even.push_back(series[i]);
             else odd.push_back(series[i]);
         }
-
         auto solveSub = [&](const std::vector<BigRat>& s) -> SolverResult {
             auto r1 = poly->solve(s);
             if (!r1.empty() && r1[0].confidence > 0.5) return r1[0];
@@ -680,11 +753,10 @@ public:
             if (!r2.empty() && r2[0].confidence > 0.5) return r2[0];
             auto r3 = visual->solve(s);
             if (!r3.empty() && r3[0].confidence > 0.5) return r3[0];
-            auto r4 = recursive->solve(s); // Check recursive
+            auto r4 = recursive->solve(s); 
             if (!r4.empty() && r4[0].confidence > 0.5) return r4[0];
             return {0, "", "", 0.0};
         };
-
         auto bestEven = solveSub(even);
         auto bestOdd = solveSub(odd);
         if (bestEven.confidence >= 0.5 && bestOdd.confidence >= 0.5) {
@@ -692,10 +764,25 @@ public:
             if (bestEven.confidence > 0.85 && bestOdd.confidence > 0.85) avgConf = 0.999; 
             else if (avgConf > 0.9) avgConf = 0.98; 
             
+            // FIX: If a split sequence is too short (<=3), it's prone to overfitting.
+            // Only trust it if it matches a very simple pattern (Constant/Linear/Geometric).
+            if (even.size() <= 3 || odd.size() <= 3) {
+                bool simple = true;
+                // Check if the patterns are "Simple" (Constant, Linear, Geometric)
+                // We use formula string heuristic or solver name
+                auto isSimple = [](const std::string& n) {
+                    return n.find("Constant") != std::string::npos || 
+                           n.find("Linear") != std::string::npos || 
+                           n.find("Geometric") != std::string::npos;
+                };
+                if (!isSimple(bestEven.formula) || !isSimple(bestOdd.formula)) {
+                    avgConf = std::min(avgConf, 0.85); // Heavily penalize complex fits on short data
+                }
+            }
+
             BigRat predicted;
             if (series.size() % 2 == 0) predicted = bestEven.nextValue; 
             else predicted = bestOdd.nextValue;
-            
             return {{predicted, "Interleaved Sequence", "", avgConf, "", "", "Two interleaved sequences found."}};
         }
         return {};
@@ -720,7 +807,6 @@ public:
         if (!res.empty() && res[0].confidence > 0.8) {
             return {{series.back() + res[0].nextValue, "Interleaved Differences", "", res[0].confidence * 0.95, "", "", "Differences form an interleaved sequence."}};
         }
-        
         auto pRes = poly->solve(diffs);
         if (!pRes.empty() && pRes[0].confidence > 0.8) {
              return {{series.back() + pRes[0].nextValue, "Polynomial Differences", "", pRes[0].confidence * 0.95, "", "", ""}};
@@ -734,6 +820,7 @@ class SimpleRobustSolver : public SequenceSolver {
 public:
     SimpleRobustSolver() {
         solvers.push_back(std::make_unique<PolynomialSolver>());
+        solvers.push_back(std::make_unique<PerfectPowerSolver>()); 
         solvers.push_back(std::make_unique<PowerSolver>());
         solvers.push_back(std::make_unique<VisualSolver>());
         solvers.push_back(std::make_unique<StandardMathSolver>());
@@ -764,7 +851,6 @@ public:
     std::string getName() const override { return "Weighted Pattern"; }
     std::vector<SolverResult> solve(const std::vector<BigRat>& series) override {
         if (series.size() < 3) return {};
-        
         std::vector<SolverResult> allResults;
 
         // 1. Standard n^p weights
@@ -784,7 +870,8 @@ public:
                   BigInt nextN = static_cast<unsigned long>(series.size() + 1);
                   BigInt w; mpz_ui_pow_ui(w.get_mpz_t(), nextN.get_ui(), p);
                   double finalConf = res[0].confidence;
-                  if (p == 1) finalConf += 0.05; // Boost simple n*x_n
+                  if (p == 1) finalConf = std::min(0.98, finalConf + 0.02); 
+                  else finalConf = std::min(0.98, finalConf);
                   allResults.push_back({res[0].nextValue / BigRat(w), "Weighted Pattern (n^" + std::to_string(p) + ")", "", finalConf, "", "", ""});
              }
         }
@@ -794,7 +881,6 @@ public:
              std::vector<BigRat> wSeries;
              bool possible = true;
              BigInt f1 = 1, f2 = 1; 
-             // Generate fib sequence
              std::vector<BigInt> fibs;
              BigInt a = 1, b = 1;
              for(size_t i=0; i<=series.size()+5; ++i) {
@@ -802,7 +888,6 @@ public:
                  BigInt next = a + b;
                  a = b; b = next;
              }
-             
              for(size_t i=0; i<series.size(); ++i) {
                  long idx = (long)i + offset;
                  if (idx < 0 || idx >= (long)fibs.size()) { possible = false; break; }
@@ -815,7 +900,7 @@ public:
              if (!res.empty() && res[0].confidence > 0.8) {
                   long nextIdx = (long)series.size() + offset;
                   BigInt nextFib = fibs[nextIdx];
-                  allResults.push_back({res[0].nextValue / BigRat(nextFib), "Weighted Pattern (Fibonacci)", "", res[0].confidence, "", "", ""});
+                  allResults.push_back({res[0].nextValue / BigRat(nextFib), "Weighted Pattern (Fibonacci)", "", std::min(0.98, res[0].confidence), "", "", ""});
              }
         }
 
@@ -831,7 +916,7 @@ public:
             if (possible) {
                 auto res = sub->solve(wSeries);
                 if (!res.empty() && res[0].confidence > 0.8) {
-                    allResults.push_back({res[0].nextValue / BigRat(facts[series.size()+1]), "Weighted Pattern (Factorial)", "", res[0].confidence, "", "", ""});
+                    allResults.push_back({res[0].nextValue / BigRat(facts[series.size()+1]), "Weighted Pattern (Factorial)", "", std::min(0.98, res[0].confidence), "", "", ""});
                 }
             }
         }
@@ -847,6 +932,7 @@ class RobustSolverWrapper : public SequenceSolver {
 public:
     RobustSolverWrapper() {
         solvers.push_back(std::make_unique<PolynomialSolver>());
+        solvers.push_back(std::make_unique<PerfectPowerSolver>()); // Added Perfect Power here
         solvers.push_back(std::make_unique<PowerSolver>());
         solvers.push_back(std::make_unique<VisualSolver>());
         solvers.push_back(std::make_unique<StandardMathSolver>());
@@ -894,20 +980,18 @@ public:
         if (!hasFrac) return {};
 
         std::vector<SolverResult> results;
-
-        // 1. Visual/String check on nums/dens
         auto vNum = visual->solve(nums);
         auto vDen = visual->solve(dens);
         if (!vNum.empty() && !vDen.empty()) {
             BigRat nextVal = vNum[0].nextValue / vDen[0].nextValue;
-            double conf = (vNum[0].confidence + vDen[0].confidence) / 2.0;
+            // FIX: Take the max confidence of components, not average. 
+            // If both are 1.0 (Linear), it stays 1.0. 
+            double conf = std::min(vNum[0].confidence, vDen[0].confidence);
             SolverResult res = {nextVal, "Fraction Pattern", "", conf, "", "", "Numerator and Denominator follow visual patterns."};
             res.unsimplifiedNum = vNum[0].nextValue.get_str();
             res.unsimplifiedDen = vDen[0].nextValue.get_str();
             results.push_back(res);
         }
-
-        // 2. Robust check on nums/dens
         auto solvePart = [&](const std::vector<BigRat>& p) {
             auto r = sub->solve(p);
             if (!r.empty() && r[0].confidence > 0.5) return r;
@@ -915,21 +999,16 @@ public:
         };
         auto rNum = solvePart(nums);
         auto rDen = solvePart(dens);
-        
         if (!rNum.empty() && !rDen.empty()) {
             BigRat nextVal = rNum[0].nextValue / rDen[0].nextValue;
             double conf = (rNum[0].confidence + rDen[0].confidence) / 2.0;
-            
             if (conf > 0.9) conf = 0.99; 
             else conf = std::min(0.99, conf + 0.05);
-
             SolverResult finalRes = {nextVal, "Fraction Pattern", "", conf, "", "", "Numerator and Denominator solved separately."};
             finalRes.unsimplifiedNum = rNum[0].nextValue.get_str();
             finalRes.unsimplifiedDen = rDen[0].nextValue.get_str();
             results.push_back(finalRes);
         }
-        
-        // 3. Weighted Solver check
         auto wRes = weight->solve(series);
         if (!wRes.empty()) {
             if (wRes[0].confidence > 0.9) {
@@ -940,7 +1019,6 @@ public:
                 results.push_back(wRes[0]); 
             }
         }
-        
         std::sort(results.begin(), results.end(), compareResults);
         return results;
     }
@@ -951,6 +1029,7 @@ class GrandUnifiedSolver : public SequenceSolver {
 public:
     GrandUnifiedSolver() {
         solvers.push_back(std::make_unique<PolynomialSolver>());
+        solvers.push_back(std::make_unique<PerfectPowerSolver>()); // Added Perfect Power here
         solvers.push_back(std::make_unique<VisualSolver>());
         solvers.push_back(std::make_unique<PowerSolver>());
         solvers.push_back(std::make_unique<StandardMathSolver>());

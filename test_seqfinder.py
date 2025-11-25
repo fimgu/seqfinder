@@ -44,7 +44,7 @@ TEST_CASES = [
 
     # Fraction Solver Tests
     (["1/2", "1/3", "1/4"], 0.2, "Fractions: Simple (1/n)"),
-    (["5/7", "7/7", "7/9", "9/9", "9/11"], 1.0, "Fractions: Complex Unsimplified"),
+    (["5/7", "7/7", "7/9", "9/9", "9/11"], 1.0, "Fractions: Complex Unsimplified"), # this one
     ([0.1, 0.2, 0.3, 0.4], 0.5, "Fractions: Numerator Pattern (Decimals)"),
     (["1/1", "1/2", "1/4", "1/8"], 0.0625, "Fractions: Geometric (1/2 ratio)"),
     (["1/2", "2/3", "3/4", "4/5"], 0.8333333333333334, "Fractions: n/(n+1)"),
